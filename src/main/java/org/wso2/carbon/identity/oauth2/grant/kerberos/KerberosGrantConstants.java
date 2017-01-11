@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+ * Copyright (c) 2016, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
  *
  * WSO2 Inc. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -15,23 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+package org.wso2.carbon.identity.oauth2.grant.kerberos;
 
-package org.wso2.sample.identity.oauth2.grant.mobile;
-
-import org.apache.oltu.oauth2.common.validators.AbstractValidator;
-
-import javax.servlet.http.HttpServletRequest;
-
-
-/**
- * This validate the mobile grant request.
- */
-public class MobileGrantValidator  extends AbstractValidator<HttpServletRequest> {
-
-
-    public MobileGrantValidator() {
-
-        // mobile number must be in the request parameter
-        requiredParams.add(MobileGrant.MOBILE_GRANT_PARAM);
-    }
+public class KerberosGrantConstants {
+    public static final String SERVER = "Server";
 }
