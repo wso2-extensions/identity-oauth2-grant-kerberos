@@ -45,43 +45,33 @@ import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
 
 /**
- * New grant type for Identity Server
+ * Kerberos OAuth2 grant type for Identity Server
  */
-public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
+public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
-    private static Log log = LogFactory.getLog(KerberosGrant.class);
-
-    private static GSSManager gssManager = GSSManager.getInstance();
-
-
-    public static final String MOBILE_GRANT_PARAM = "mobileNumber";
-    public static final String KERBEROS_GRANT_PARAM = "kerberosToken";
     // Hardcoded for initial testing
     public static final String KERBEROS_SPN = "HTTP/idp.example.com@EXAMPLE.COM";
     public static final String KERBEROS_PASSWORD = "Xyz12345";
+    private static Log log = LogFactory.getLog(KerberosGrant.class);
+    private static GSSManager gssManager = GSSManager.getInstance();
 
     @Override
-    public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)  throws IdentityOAuth2Exception {
+    public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)
+            throws IdentityOAuth2Exception {
 
         log.info("kerberos Grant handler is hit");
 
         boolean authStatus = false;
+        String kerberosUsersId = null;
 
         // extract request parameters
         RequestParameter[] parameters = oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getRequestParameters();
 
-        String mobileNumber = null;
         String kerberosServiceToken = null;
 
-        // find out mobile number
-        for(RequestParameter parameter : parameters){
-            if(MOBILE_GRANT_PARAM.equals(parameter.getKey())){
-                if(parameter.getValue() != null && parameter.getValue().length > 0){
-                    mobileNumber = parameter.getValue()[0];
-                }
-            }
-            if(KERBEROS_GRANT_PARAM.equals(parameter.getKey())){
-                if(parameter.getValue() != null && parameter.getValue().length > 0){
+        for (RequestParameter parameter : parameters) {
+            if (KerberosGrantConstants.KERBEROS_GRANT_PARAM.equals(parameter.getKey())) {
+                if (parameter.getValue() != null && parameter.getValue().length > 0) {
                     kerberosServiceToken = parameter.getValue()[0];
                 }
             }
@@ -91,47 +81,53 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
         try {
             gssCredential = createCredentials(KERBEROS_SPN, KERBEROS_PASSWORD.toCharArray());
         } catch (LoginException e) {
-            e.printStackTrace();
+            log.error(e);
         } catch (PrivilegedActionException e) {
-            e.printStackTrace();
+            log.error(e);
         }
-        System.out.println("Credentials created successfully");
-        System.out.println("Kerberos ticket: " + kerberosServiceToken);
+        log.info("Credentials created successfully");
+        log.info("Kerberos ticket: " + kerberosServiceToken);
 
         if (gssCredential != null) {
             try {
-                if (validateKerberosTicket(gssCredential, Base64.decode(kerberosServiceToken))) {
-                    System.out.println("Kerberos ticket validates");
+                kerberosUsersId = validateKerberosTicket(gssCredential, Base64.decode(kerberosServiceToken));
+                if (kerberosUsersId != null) {
+                    authStatus = true;
+                    log.info("Kerberos ticket validates fine");
                 }
             } catch (GSSException e) {
-                e.printStackTrace();
+                log.error(e);
             }
         }
 
-        if(mobileNumber != null) {
-            //validate mobile number
-            authStatus =  isValidMobileNumber(mobileNumber);
-
-            if(authStatus) {
-                // if valid set authorized mobile number as grant user
-                AuthenticatedUser mobileUser = new AuthenticatedUser();
-                mobileUser.setUserName(mobileNumber);
-                oAuthTokenReqMessageContext.setAuthorizedUser(mobileUser);
-                oAuthTokenReqMessageContext.setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
-            } else{
-                ResponseHeader responseHeader = new ResponseHeader();
-                responseHeader.setKey("SampleHeader-999");
-                responseHeader.setValue("Provided Mobile Number is Invalid.");
-                oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[]{responseHeader});
-            }
-
+        if (authStatus) {
+            // if valid set authorized kerberos user Id as grant user
+            AuthenticatedUser kerberosUser = new AuthenticatedUser();
+            kerberosUser.setUserName(kerberosUsersId);
+            oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
+            oAuthTokenReqMessageContext.setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
+        } else {
+            ResponseHeader responseHeader = new ResponseHeader();
+            responseHeader.setKey("SampleHeader-999");
+            responseHeader.setValue("Provided Kerberos token is Invalid.");
+            oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[] { responseHeader });
         }
 
-	System.out.println("Mobile status: " + authStatus);
+        log.info("Kerberos ticket validation status: " + authStatus);
+
         return authStatus;
     }
 
-    private GSSCredential createCredentials (String spnUsername, char[] spnPassword)
+    /**
+     * Create credentials object using provided username and password
+     *
+     * @param spnUsername
+     * @param spnPassword
+     * @return
+     * @throws LoginException
+     * @throws PrivilegedActionException
+     */
+    private GSSCredential createCredentials(String spnUsername, char[] spnPassword)
             throws LoginException, PrivilegedActionException {
         CallbackHandler callbackHandler = getUserNamePasswordCallbackHandler(spnUsername, spnPassword);
 
@@ -144,8 +140,8 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
 
         final PrivilegedExceptionAction<GSSCredential> action = new PrivilegedExceptionAction<GSSCredential>() {
             public GSSCredential run() throws GSSException {
-                return gssManager.createCredential(null, GSSCredential.INDEFINITE_LIFETIME,
-                        GSSUtil.GSS_SPNEGO_MECH_OID, GSSCredential.ACCEPT_ONLY);
+                return gssManager.createCredential(null, GSSCredential.INDEFINITE_LIFETIME, GSSUtil.GSS_SPNEGO_MECH_OID,
+                        GSSCredential.ACCEPT_ONLY);
             }
         };
 
@@ -160,6 +156,11 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
         return Subject.doAs(loginContext.getSubject(), action);
     }
 
+    /**
+     * @param username
+     * @param password
+     * @return
+     */
     private CallbackHandler getUserNamePasswordCallbackHandler(final String username, final char[] password) {
 
         return new CallbackHandler() {
@@ -179,8 +180,15 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
         };
     }
 
-    private boolean validateKerberosTicket(GSSCredential gssCredentials, byte[] gssToken) throws GSSException {
-        //String fullyQualifiedName = getAuthenticatedUserFromToken(gssCredential, Base64.decode(gssToken));
+    /**
+     * Decrypts the provided Kerberos token using generated credentials and validate it
+     *
+     * @param gssCredentials
+     * @param gssToken
+     * @return the name of the user, if an error occurred return null
+     * @throws GSSException
+     */
+    private String validateKerberosTicket(GSSCredential gssCredentials, byte[] gssToken) throws GSSException {
         GSSContext context = gssManager.createContext(gssCredentials);
         // decrypt the kerberos ticket (GSS token)
         context.acceptSecContext(gssToken, 0, gssToken.length);
@@ -188,25 +196,25 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
         // if we cannot decrypt the GSS Token we return the username as null
         if (!context.isEstablished()) {
             log.error("Unable to decrypt the kerberos ticket as context was not established.");
-            return false;
+            return null;
         }
 
-        String loggedInUserName = context.getSrcName().toString();
+        String initiator = context.getSrcName().toString();
         String target = context.getTargName().toString();
 
-        System.out.println("Username: " + loggedInUserName);
-        System.out.println("Target name: " + target);
+        log.info("Initiator: " + initiator);
+        log.info("Acceptor name: " + target);
 
         if (log.isDebugEnabled()) {
-            String msg = "Extracted details from GSS Token, LoggedIn User : " + loggedInUserName
-                    + " , Intended target : " + target;
+            String msg =
+                    "Extracted details from GSS Token, Initiator : " + initiator + " , Intended target : " + target;
             log.debug(msg);
         }
 
-        return true;
+        return initiator;
     }
-    public boolean authorizeAccessDelegation(OAuthTokenReqMessageContext tokReqMsgCtx)
-            throws IdentityOAuth2Exception {
+
+    public boolean authorizeAccessDelegation(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
         // if we need to just ignore the end user's extended verification
 
@@ -215,24 +223,20 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
         // if we need to verify with the end user's access delegation by calling callback chain.
         // However, you need to register a callback for this. Default call back just return true.
 
-
-//        OAuthCallback authzCallback = new OAuthCallback(
-//                tokReqMsgCtx.getAuthorizedUser(),
-//                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
-//                OAuthCallback.OAuthCallbackType.ACCESS_DELEGATION_TOKEN);
-//        authzCallback.setRequestedScope(tokReqMsgCtx.getScope());
-//        authzCallback.setCarbonGrantType(org.wso2.carbon.identity.oauth.common.GrantType.valueOf(tokReqMsgCtx.
-//                                                            getOauth2AccessTokenReqDTO().getGrantType()));
-//        callbackManager.handleCallback(authzCallback);
-//        tokReqMsgCtx.setValidityPeriod(authzCallback.getValidityPeriod());
-//        return authzCallback.isAuthorized();
+        //        OAuthCallback authzCallback = new OAuthCallback(
+        //                tokReqMsgCtx.getAuthorizedUser(),
+        //                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
+        //                OAuthCallback.OAuthCallbackType.ACCESS_DELEGATION_TOKEN);
+        //        authzCallback.setRequestedScope(tokReqMsgCtx.getScope());
+        //        authzCallback.setCarbonGrantType(org.wso2.carbon.identity.oauth.common.GrantType.valueOf(tokReqMsgCtx.
+        //                                                            getOauth2AccessTokenReqDTO().getGrantType()));
+        //        callbackManager.handleCallback(authzCallback);
+        //        tokReqMsgCtx.setValidityPeriod(authzCallback.getValidityPeriod());
+        //        return authzCallback.isAuthorized();
 
     }
 
-
-    public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx)
-            throws IdentityOAuth2Exception {
-
+    public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
 
         // if we need to just ignore the scope verification
 
@@ -243,39 +247,17 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler  {
         // you can find more details on writing custom scope validator from here
         // http://xacmlinfo.org/2014/10/24/authorization-for-apis-with-xacml-and-oauth-2-0/
 
-//        OAuthCallback scopeValidationCallback = new OAuthCallback(
-//                tokReqMsgCtx.getAuthorizedUser().toString(),
-//                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
-//                OAuthCallback.OAuthCallbackType.SCOPE_VALIDATION_TOKEN);
-//        scopeValidationCallback.setRequestedScope(tokReqMsgCtx.getScope());
-//        scopeValidationCallback.setCarbonGrantType(org.wso2.carbon.identity.oauth.common.GrantType.valueOf(tokReqMsgCtx.
-//                                                            getOauth2AccessTokenReqDTO().getGrantType()));
-//
-//        callbackManager.handleCallback(scopeValidationCallback);
-//        tokReqMsgCtx.setValidityPeriod(scopeValidationCallback.getValidityPeriod());
-//        tokReqMsgCtx.setScope(scopeValidationCallback.getApprovedScope());
-//        return scopeValidationCallback.isValidScope();
+        //        OAuthCallback scopeValidationCallback = new OAuthCallback(
+        //                tokReqMsgCtx.getAuthorizedUser().toString(),
+        //                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
+        //                OAuthCallback.OAuthCallbackType.SCOPE_VALIDATION_TOKEN);
+        //        scopeValidationCallback.setRequestedScope(tokReqMsgCtx.getScope());
+        //        scopeValidationCallback.setCarbonGrantType(org.wso2.carbon.identity.oauth.common.GrantType.valueOf(tokReqMsgCtx.
+        //                                                            getOauth2AccessTokenReqDTO().getGrantType()));
+        //
+        //        callbackManager.handleCallback(scopeValidationCallback);
+        //        tokReqMsgCtx.setValidityPeriod(scopeValidationCallback.getValidityPeriod());
+        //        tokReqMsgCtx.setScope(scopeValidationCallback.getApprovedScope());
+        //        return scopeValidationCallback.isValidScope();
     }
-
-
-
-    /**
-     * TODO
-     *
-     * You need to implement how to validate the mobile number
-     *
-     * @param mobileNumber
-     * @return
-     */
-    private boolean isValidMobileNumber(String mobileNumber){
-
-        // just demo validation
-
-        if(mobileNumber.startsWith("033")){
-            return true;
-        }
-
-        return false;
-    }
-
 }

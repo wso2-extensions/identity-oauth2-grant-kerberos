@@ -18,5 +18,9 @@
 package org.wso2.carbon.identity.oauth2.grant.kerberos;
 
 public class KerberosGrantConstants {
+
     public static final String SERVER = "Server";
+
+    public static final String KERBEROS_GRANT_PARAM = "kerberosToken";
+
 }

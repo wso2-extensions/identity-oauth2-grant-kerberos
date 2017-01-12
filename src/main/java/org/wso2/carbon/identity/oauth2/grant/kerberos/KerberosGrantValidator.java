@@ -30,9 +30,6 @@ public class KerberosGrantValidator extends AbstractValidator<HttpServletRequest
 
 
     public KerberosGrantValidator() {
-
-        // mobile number must be in the request parameter
-        requiredParams.add(KerberosGrant.MOBILE_GRANT_PARAM);
-        requiredParams.add(KerberosGrant.KERBEROS_GRANT_PARAM);
+        requiredParams.add(KerberosGrantConstants.KERBEROS_GRANT_PARAM);
     }
 }
