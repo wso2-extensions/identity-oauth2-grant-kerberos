@@ -91,16 +91,13 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         if (gssCredential != null) {
             try {
                 kerberosUsersId = validateKerberosTicket(gssCredential, Base64.decode(kerberosServiceToken));
-                if (kerberosUsersId != null) {
-                    authStatus = true;
-                    log.info("Kerberos ticket validates fine");
-                }
+                log.info("Kerberos ticket validates fine");
             } catch (GSSException e) {
                 log.error(e);
             }
         }
 
-        if (authStatus) {
+        if (kerberosUsersId != null) {
             // if valid set authorized kerberos user Id as grant user
             AuthenticatedUser kerberosUser = new AuthenticatedUser();
             kerberosUser.setUserName(kerberosUsersId);
@@ -113,9 +110,10 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
             oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[] { responseHeader });
         }
 
-        log.info("Kerberos ticket validation status: " + authStatus);
+        log.info("Kerberos ticket validation status: " + kerberosUsersId != null);
 
-        return authStatus;
+        // if the ticket validation failed the kerberosUserId will be null, therefore following will return false
+        return (kerberosUsersId != null);
     }
 
     /**
