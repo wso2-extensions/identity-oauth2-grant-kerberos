@@ -23,6 +23,6 @@ public class KerberosGrantConstants {
 
     public static final String GRANT_NAME = "grant_type";
 
-    public static final String KERBEROS_GRANT_TOKEN = "kerberosToken";
+    public static final String KERBEROS_GRANT_TOKEN = "kerberos_token";
 
 }
