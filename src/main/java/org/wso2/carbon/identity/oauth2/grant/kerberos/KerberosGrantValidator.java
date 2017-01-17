@@ -30,6 +30,7 @@ public class KerberosGrantValidator extends AbstractValidator<HttpServletRequest
 
 
     public KerberosGrantValidator() {
-        requiredParams.add(KerberosGrantConstants.KERBEROS_GRANT_PARAM);
+        requiredParams.add(KerberosGrantConstants.GRANT_NAME);
+        requiredParams.add(KerberosGrantConstants.KERBEROS_GRANT_TOKEN);
     }
 }

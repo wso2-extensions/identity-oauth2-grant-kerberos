@@ -24,14 +24,18 @@ import org.ietf.jgss.GSSContext;
 import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSManager;
+import org.ietf.jgss.Oid;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.ResponseHeader;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
+import sun.security.jgss.GSSHeader;
 import sun.security.jgss.GSSUtil;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.security.Principal;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
@@ -59,9 +63,6 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
     public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)
             throws IdentityOAuth2Exception {
 
-        log.info("kerberos Grant handler is hit");
-
-        boolean authStatus = false;
         String kerberosUsersId = null;
 
         // extract request parameters
@@ -70,28 +71,33 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         String kerberosServiceToken = null;
 
         for (RequestParameter parameter : parameters) {
-            if (KerberosGrantConstants.KERBEROS_GRANT_PARAM.equals(parameter.getKey())) {
+            if (KerberosGrantConstants.KERBEROS_GRANT_TOKEN.equals(parameter.getKey())) {
                 if (parameter.getValue() != null && parameter.getValue().length > 0) {
                     kerberosServiceToken = parameter.getValue()[0];
                 }
             }
         }
 
+        Oid oidOfToken = GSSUtil.GSS_SPNEGO_MECH_OID;
+        try {
+            oidOfToken = getOid(Base64.decode(kerberosServiceToken));
+        } catch (IOException | GSSException e) {
+            log.warn("Unable to get Oid. Setting to default type SPENGO" + e.getMessage());
+        }
+
         GSSCredential gssCredential = null;
         try {
-            gssCredential = createCredentials(KERBEROS_SPN, KERBEROS_PASSWORD.toCharArray());
-        } catch (LoginException e) {
-            log.error(e);
-        } catch (PrivilegedActionException e) {
+            gssCredential = createCredentials(KERBEROS_SPN, KERBEROS_PASSWORD.toCharArray(), oidOfToken);
+        } catch (LoginException | PrivilegedActionException e) {
             log.error(e);
         }
-        log.info("Credentials created successfully");
-        log.info("Kerberos ticket: " + kerberosServiceToken);
 
         if (gssCredential != null) {
             try {
                 kerberosUsersId = validateKerberosTicket(gssCredential, Base64.decode(kerberosServiceToken));
-                log.info("Kerberos ticket validates fine");
+                if (log.isDebugEnabled()) {
+                    log.debug("Kerberos token validated successfully");
+                }
             } catch (GSSException e) {
                 log.error(e);
             }
@@ -110,8 +116,9 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
             oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[] { responseHeader });
         }
 
-        log.info("Kerberos ticket validation status: " + kerberosUsersId != null);
-
+        if (log.isDebugEnabled()) {
+            log.debug("Issuing OAuth2 token by kerberos-oauth2 grant");
+        }
         // if the ticket validation failed the kerberosUserId will be null, therefore following will return false
         return (kerberosUsersId != null);
     }
@@ -125,7 +132,7 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
      * @throws LoginException
      * @throws PrivilegedActionException
      */
-    private GSSCredential createCredentials(String spnUsername, char[] spnPassword)
+    private GSSCredential createCredentials(String spnUsername, char[] spnPassword, final Oid oid)
             throws LoginException, PrivilegedActionException {
         CallbackHandler callbackHandler = getUserNamePasswordCallbackHandler(spnUsername, spnPassword);
 
@@ -138,7 +145,7 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
         final PrivilegedExceptionAction<GSSCredential> action = new PrivilegedExceptionAction<GSSCredential>() {
             public GSSCredential run() throws GSSException {
-                return gssManager.createCredential(null, GSSCredential.INDEFINITE_LIFETIME, GSSUtil.GSS_SPNEGO_MECH_OID,
+                return gssManager.createCredential(null, GSSCredential.INDEFINITE_LIFETIME, oid,
                         GSSCredential.ACCEPT_ONLY);
             }
         };
@@ -200,9 +207,6 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         String initiator = context.getSrcName().toString();
         String target = context.getTargName().toString();
 
-        log.info("Initiator: " + initiator);
-        log.info("Acceptor name: " + target);
-
         if (log.isDebugEnabled()) {
             String msg =
                     "Extracted details from GSS Token, Initiator : " + initiator + " , Intended target : " + target;
@@ -257,5 +261,20 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         //        tokReqMsgCtx.setValidityPeriod(scopeValidationCallback.getValidityPeriod());
         //        tokReqMsgCtx.setScope(scopeValidationCallback.getApprovedScope());
         //        return scopeValidationCallback.isValidScope();
+    }
+
+    /**
+     * Util method to get the Oid type for the received token
+     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
+     *      KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
+     *
+     * @param gssToken Received token converted to byte array
+     * @return matching Oid
+     * @throws IOException
+     * @throws GSSException
+     */
+    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
+        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken,0,gssToken.length));
+        return GSSUtil.createOid(header.getOid().toString());
     }
 }
