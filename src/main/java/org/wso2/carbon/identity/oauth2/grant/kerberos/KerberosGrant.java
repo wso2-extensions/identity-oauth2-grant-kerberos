@@ -18,6 +18,7 @@
 package org.wso2.carbon.identity.oauth2.grant.kerberos;
 
 import org.apache.axiom.om.util.Base64;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.ietf.jgss.GSSContext;
@@ -26,11 +27,18 @@ import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSManager;
 import org.ietf.jgss.Oid;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
+import org.wso2.carbon.identity.application.common.model.IdentityProvider;
+import org.wso2.carbon.identity.application.common.model.Property;
+import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.ResponseHeader;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
+import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
+import org.wso2.carbon.idp.mgt.IdentityProviderManager;
+import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 import sun.security.jgss.GSSHeader;
 import sun.security.jgss.GSSUtil;
 
@@ -53,22 +61,53 @@ import javax.security.auth.login.LoginException;
  */
 public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
-    // Hardcoded for initial testing
-    public static final String KERBEROS_SPN = "HTTP/idp.example.com@EXAMPLE.COM";
-    public static final String KERBEROS_PASSWORD = "Xyz12345";
     private static Log log = LogFactory.getLog(KerberosGrant.class);
     private static GSSManager gssManager = GSSManager.getInstance();
+
+    /**
+     * Util method to get the Oid type for the received token
+     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
+     * KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
+     *
+     * @param gssToken Received token converted to byte array
+     * @return matching Oid
+     * @throws IOException
+     * @throws GSSException
+     */
+    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
+        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken, 0, gssToken.length));
+        return GSSUtil.createOid(header.getOid().toString());
+    }
 
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)
             throws IdentityOAuth2Exception {
 
+        IdentityProvider identityProvider;
+        String tenantDomain;
+
+        // Kerberos SGT
+        String kerberosServiceToken = null;
+
+        // Kerberos realm (this value should come with the request)
+        String kerberosRealm = null;
+
+        // Kerberos Id of the client
         String kerberosUsersId = null;
+
+        // Kerberos Credentials
+        String kerberosSPN = null;
+        String kerberosPwd = null;
+        FederatedAuthenticatorConfig kerberosFederatedConfig = null;
+
+        /* Setting the tenant ID */
+        tenantDomain = oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getTenantDomain();
+        if (StringUtils.isEmpty(tenantDomain)) {
+            tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
+        }
 
         // extract request parameters
         RequestParameter[] parameters = oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getRequestParameters();
-
-        String kerberosServiceToken = null;
 
         for (RequestParameter parameter : parameters) {
             if (KerberosGrantConstants.KERBEROS_GRANT_TOKEN.equals(parameter.getKey())) {
@@ -76,44 +115,74 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                     kerberosServiceToken = parameter.getValue()[0];
                 }
             }
-        }
-
-        Oid oidOfToken = GSSUtil.GSS_SPNEGO_MECH_OID;
-        try {
-            oidOfToken = getOid(Base64.decode(kerberosServiceToken));
-        } catch (IOException | GSSException e) {
-            log.warn("Unable to get Oid. Setting to default type SPENGO" + e.getMessage());
-        }
-
-        GSSCredential gssCredential = null;
-        try {
-            gssCredential = createCredentials(KERBEROS_SPN, KERBEROS_PASSWORD.toCharArray(), oidOfToken);
-        } catch (LoginException | PrivilegedActionException e) {
-            log.error(e);
-        }
-
-        if (gssCredential != null) {
-            try {
-                kerberosUsersId = validateKerberosTicket(gssCredential, Base64.decode(kerberosServiceToken));
-                if (log.isDebugEnabled()) {
-                    log.debug("Kerberos token validated successfully");
+            if (KerberosGrantConstants.KERBEROS_REALM.equals(parameter.getKey())) {
+                if (parameter.getValue() != null && parameter.getValue().length > 0) {
+                    kerberosRealm = parameter.getValue()[0];
                 }
-            } catch (GSSException e) {
-                log.error(e);
             }
         }
 
-        if (kerberosUsersId != null) {
-            // if valid set authorized kerberos user Id as grant user
-            AuthenticatedUser kerberosUser = new AuthenticatedUser();
-            kerberosUser.setUserName(kerberosUsersId);
-            oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
-            oAuthTokenReqMessageContext.setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
-        } else {
-            ResponseHeader responseHeader = new ResponseHeader();
-            responseHeader.setKey("SampleHeader-999");
-            responseHeader.setValue("Provided Kerberos token is Invalid.");
-            oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[] { responseHeader });
+        try {
+            identityProvider = IdentityProviderManager.getInstance().getIdPByName(kerberosRealm, tenantDomain);
+            if (identityProvider != null) {
+                kerberosFederatedConfig = IdentityApplicationManagementUtil
+                        .getFederatedAuthenticator(identityProvider.getFederatedAuthenticatorConfigs(),
+                                KerberosGrantConstants.KERBEROS_IDP_IDENTIFIER);
+                for (Property property : kerberosFederatedConfig.getProperties()) {
+                    if (KerberosGrantConstants.KERBEROS_IDP_SPNNAME.equals(property.getName()))
+                        kerberosSPN = property.getValue();
+                    else if (KerberosGrantConstants.KERBEROS_IDP_SPNPASSWORD.equals(property.getName()))
+                        kerberosPwd = property.getValue();
+                }
+
+                if (StringUtils.isEmpty(kerberosSPN) || StringUtils.isEmpty(kerberosPwd)) {
+                    handleException("Kerberos username/password is not provided for the IDP : " + kerberosRealm);
+                }
+            } else {
+                handleException("No Registered IDP found for Kerberos with realm : " + kerberosRealm);
+            }
+
+            // Handling MECH Oid and creating credentials
+            Oid oidOfToken = GSSUtil.GSS_SPNEGO_MECH_OID;
+            try {
+                oidOfToken = getOid(Base64.decode(kerberosServiceToken));
+            } catch (IOException | GSSException e) {
+                log.warn("Unable to get Oid. Setting to default type SPENGO " + e.getMessage());
+            }
+
+            GSSCredential gssCredential = null;
+            try {
+                gssCredential = createCredentials(kerberosSPN, kerberosPwd.toCharArray(), oidOfToken);
+            } catch (LoginException | PrivilegedActionException e) {
+                log.error(e);
+            }
+
+            if (gssCredential != null) {
+                try {
+                    kerberosUsersId = validateKerberosTicket(gssCredential, Base64.decode(kerberosServiceToken));
+                    if (log.isDebugEnabled()) {
+                        log.debug("Kerberos token validated successfully");
+                    }
+                } catch (GSSException e) {
+                    log.error(e);
+                }
+            }
+
+            if (kerberosUsersId != null) {
+                // if valid set authorized kerberos user Id as grant user
+                AuthenticatedUser kerberosUser = new AuthenticatedUser();
+                kerberosUser.setUserName(kerberosUsersId);
+                oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
+                oAuthTokenReqMessageContext
+                        .setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
+            } else {
+                ResponseHeader responseHeader = new ResponseHeader();
+                responseHeader.setKey("SampleHeader-999");
+                responseHeader.setValue("Provided Kerberos token is Invalid.");
+                oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[] { responseHeader });
+            }
+        } catch (IdentityProviderManagementException e) {
+            handleException("Error while getting the Federated Identity Provider ");
         }
 
         if (log.isDebugEnabled()) {
@@ -145,8 +214,8 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
         final PrivilegedExceptionAction<GSSCredential> action = new PrivilegedExceptionAction<GSSCredential>() {
             public GSSCredential run() throws GSSException {
-                return gssManager.createCredential(null, GSSCredential.INDEFINITE_LIFETIME, oid,
-                        GSSCredential.ACCEPT_ONLY);
+                return gssManager
+                        .createCredential(null, GSSCredential.INDEFINITE_LIFETIME, oid, GSSCredential.ACCEPT_ONLY);
             }
         };
 
@@ -263,18 +332,8 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         //        return scopeValidationCallback.isValidScope();
     }
 
-    /**
-     * Util method to get the Oid type for the received token
-     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
-     *      KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
-     *
-     * @param gssToken Received token converted to byte array
-     * @return matching Oid
-     * @throws IOException
-     * @throws GSSException
-     */
-    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
-        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken,0,gssToken.length));
-        return GSSUtil.createOid(header.getOid().toString());
+    private void handleException(String errorMessage) throws IdentityOAuth2Exception {
+        log.error(errorMessage);
+        throw new IdentityOAuth2Exception(errorMessage);
     }
 }

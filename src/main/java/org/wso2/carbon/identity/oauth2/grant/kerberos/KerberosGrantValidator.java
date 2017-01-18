@@ -28,9 +28,9 @@ import javax.servlet.http.HttpServletRequest;
  */
 public class KerberosGrantValidator extends AbstractValidator<HttpServletRequest> {
 
-
     public KerberosGrantValidator() {
         requiredParams.add(KerberosGrantConstants.GRANT_NAME);
         requiredParams.add(KerberosGrantConstants.KERBEROS_GRANT_TOKEN);
+        requiredParams.add(KerberosGrantConstants.KERBEROS_REALM);
     }
 }

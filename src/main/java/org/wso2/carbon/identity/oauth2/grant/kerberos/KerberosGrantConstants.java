@@ -25,4 +25,12 @@ public class KerberosGrantConstants {
 
     public static final String KERBEROS_GRANT_TOKEN = "kerberos_token";
 
+    public static final String KERBEROS_REALM = "kerberos_realm";
+
+    public static final String KERBEROS_IDP_IDENTIFIER = "IWAKerberosAuthenticator";
+
+    public static final String KERBEROS_IDP_SPNNAME = "SPNName";
+
+    public static final String KERBEROS_IDP_SPNPASSWORD = "SPNPassword";
+
 }
