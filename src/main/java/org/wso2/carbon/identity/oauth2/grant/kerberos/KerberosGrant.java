@@ -177,7 +177,7 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                         .setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
             } else {
                 ResponseHeader responseHeader = new ResponseHeader();
-                responseHeader.setKey("SampleHeader-999");
+                responseHeader.setKey("OAuth2 Token Request");
                 responseHeader.setValue("Provided Kerberos token is Invalid.");
                 oAuthTokenReqMessageContext.addProperty("RESPONSE_HEADERS", new ResponseHeader[] { responseHeader });
             }
@@ -274,11 +274,11 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         }
 
         String initiator = context.getSrcName().toString();
-        String target = context.getTargName().toString();
 
         if (log.isDebugEnabled()) {
             String msg =
-                    "Extracted details from GSS Token, Initiator : " + initiator + " , Intended target : " + target;
+                    "Extracted details from GSS Token, Initiator : " + initiator + " , Intended target : " + context
+                            .getTargName().toString();
             log.debug(msg);
         }
 
