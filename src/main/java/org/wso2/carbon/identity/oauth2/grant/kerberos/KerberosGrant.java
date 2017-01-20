@@ -58,26 +58,22 @@ import javax.security.auth.login.LoginException;
 
 /**
  * Kerberos OAuth2 grant type for Identity Server
+ *
+ * <p/>
+ * Request format
+ * POST /oauth2/token HTTP/1.1
+ * Host: idp.example.com:9443
+ * Content-Type: application/x-www-form-urlencoded
+ * Authorization: Basic MW91TDJmTzZTeGxmRDJMRHcxMjVjVG8wd...
+ *
+ * grant_type=kerberos&kerberos_realm=example.com&kerberos_token=<KerberosToken>
+ *
+ *
  */
 public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
     private static Log log = LogFactory.getLog(KerberosGrant.class);
     private static GSSManager gssManager = GSSManager.getInstance();
-
-    /**
-     * Util method to get the Oid type for the received token
-     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
-     * KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
-     *
-     * @param gssToken Received token converted to byte array
-     * @return matching Oid
-     * @throws IOException
-     * @throws GSSException
-     */
-    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
-        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken, 0, gssToken.length));
-        return GSSUtil.createOid(header.getOid().toString());
-    }
 
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)
@@ -308,28 +304,23 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
     }
 
     public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
-
-        // if we need to just ignore the scope verification
-
+        //Ignore the scope validation from the grant
         return true;
+    }
 
-        // if we need to verify with the scope n by calling callback chain.
-        // However, you need to register a callback for this. Default call back just return true.
-        // you can find more details on writing custom scope validator from here
-        // http://xacmlinfo.org/2014/10/24/authorization-for-apis-with-xacml-and-oauth-2-0/
-
-        //        OAuthCallback scopeValidationCallback = new OAuthCallback(
-        //                tokReqMsgCtx.getAuthorizedUser().toString(),
-        //                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
-        //                OAuthCallback.OAuthCallbackType.SCOPE_VALIDATION_TOKEN);
-        //        scopeValidationCallback.setRequestedScope(tokReqMsgCtx.getScope());
-        //        scopeValidationCallback.setCarbonGrantType(org.wso2.carbon.identity.oauth.common.GrantType.valueOf(tokReqMsgCtx.
-        //                                                            getOauth2AccessTokenReqDTO().getGrantType()));
-        //
-        //        callbackManager.handleCallback(scopeValidationCallback);
-        //        tokReqMsgCtx.setValidityPeriod(scopeValidationCallback.getValidityPeriod());
-        //        tokReqMsgCtx.setScope(scopeValidationCallback.getApprovedScope());
-        //        return scopeValidationCallback.isValidScope();
+    /**
+     * Util method to get the Oid type for the received token
+     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
+     * KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
+     *
+     * @param gssToken Received token converted to byte array
+     * @return matching Oid
+     * @throws IOException
+     * @throws GSSException
+     */
+    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
+        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken, 0, gssToken.length));
+        return GSSUtil.createOid(header.getOid().toString());
     }
 
     private void handleException(String errorMessage) throws IdentityOAuth2Exception {
