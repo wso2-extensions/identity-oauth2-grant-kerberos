@@ -52,7 +52,6 @@
             <artifactId>org.wso2.carbon.apimgt.keymgt</artifactId>
             <version>6.0.4</version>
         </dependency>
-
     </dependencies>
 
     <repositories>

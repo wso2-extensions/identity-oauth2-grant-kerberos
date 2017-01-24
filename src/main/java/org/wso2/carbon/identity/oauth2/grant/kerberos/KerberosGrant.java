@@ -74,6 +74,20 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
     private static Log log = LogFactory.getLog(KerberosGrant.class);
     private static GSSManager gssManager = GSSManager.getInstance();
 
+    /**
+     * Util method to get the Oid type for the received token
+     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
+     * KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
+     *
+     * @param gssToken Received token converted to byte array
+     * @return matching Oid
+     * @throws IOException
+     * @throws GSSException
+     */
+    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
+        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken, 0, gssToken.length));
+        return GSSUtil.createOid(header.getOid().toString());
+    }
 
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)
@@ -164,11 +178,14 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                 }
             }
 
+            // if valid set authorized kerberos user Id as grant user
             if (kerberosUsersId != null) {
-                // if valid set authorized kerberos user Id as grant user
-                kerberosUsersId = kerberosUsersId.replace('@','.');
+                // Removing the Domain ID from users name (if it exists)
+                int indexOfAt = (kerberosUsersId.lastIndexOf('@') != -1) ?
+                        kerberosUsersId.lastIndexOf('@') :
+                        kerberosUsersId.length();
                 AuthenticatedUser kerberosUser = new AuthenticatedUser();
-                kerberosUser.setUserName(kerberosUsersId);
+                kerberosUser.setUserName(kerberosUsersId.substring(0, indexOfAt));
                 kerberosUser
                         .setTenantDomain(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getTenantDomain());
                 oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
@@ -289,21 +306,6 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
     public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) {
         // APIM specific scope handling
         return ScopesIssuer.getInstance().setScopes(tokReqMsgCtx);
-    }
-
-    /**
-     * Util method to get the Oid type for the received token
-     * Eg:  SPENGO token will have Oid of "1.3.6.1.5.5.2"
-     * KER_5 tokens will have Oid of "1.2.840.113554.1.2.2"
-     *
-     * @param gssToken Received token converted to byte array
-     * @return matching Oid
-     * @throws IOException
-     * @throws GSSException
-     */
-    private static Oid getOid(byte[] gssToken) throws IOException, GSSException {
-        GSSHeader header = new GSSHeader(new ByteArrayInputStream(gssToken, 0, gssToken.length));
-        return GSSUtil.createOid(header.getOid().toString());
     }
 
     private void handleException(String errorMessage) throws IdentityOAuth2Exception {
