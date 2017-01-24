@@ -26,6 +26,7 @@ import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSManager;
 import org.ietf.jgss.Oid;
+import org.wso2.carbon.apimgt.keymgt.ScopesIssuer;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
@@ -58,22 +59,21 @@ import javax.security.auth.login.LoginException;
 
 /**
  * Kerberos OAuth2 grant type for Identity Server
- *
+ * <p>
  * <p/>
  * Request format
  * POST /oauth2/token HTTP/1.1
  * Host: idp.example.com:9443
  * Content-Type: application/x-www-form-urlencoded
  * Authorization: Basic MW91TDJmTzZTeGxmRDJMRHcxMjVjVG8wd...
- *
+ * <p>
  * grant_type=kerberos&kerberos_realm=example.com&kerberos_token=<KerberosToken>
- *
- *
  */
 public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
     private static Log log = LogFactory.getLog(KerberosGrant.class);
     private static GSSManager gssManager = GSSManager.getInstance();
+
 
     @Override
     public boolean validateGrant(OAuthTokenReqMessageContext oAuthTokenReqMessageContext)
@@ -166,11 +166,15 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
             if (kerberosUsersId != null) {
                 // if valid set authorized kerberos user Id as grant user
+                kerberosUsersId = kerberosUsersId.replace('@','.');
                 AuthenticatedUser kerberosUser = new AuthenticatedUser();
                 kerberosUser.setUserName(kerberosUsersId);
+                kerberosUser
+                        .setTenantDomain(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getTenantDomain());
                 oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
                 oAuthTokenReqMessageContext
                         .setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
+                oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().setResourceOwnerUsername(kerberosUsersId);
             } else {
                 ResponseHeader responseHeader = new ResponseHeader();
                 responseHeader.setKey("OAuth2 Token Request");
@@ -303,9 +307,10 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
     }
 
-    public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
-        //Ignore the scope validation from the grant
-        return true;
+    @Override
+    public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) {
+        // APIM specific scope handling
+        return ScopesIssuer.getInstance().setScopes(tokReqMsgCtx);
     }
 
     /**
