@@ -285,28 +285,6 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         return initiator;
     }
 
-    public boolean authorizeAccessDelegation(OAuthTokenReqMessageContext tokReqMsgCtx) throws IdentityOAuth2Exception {
-
-        // if we need to just ignore the end user's extended verification
-
-        return true;
-
-        // if we need to verify with the end user's access delegation by calling callback chain.
-        // However, you need to register a callback for this. Default call back just return true.
-
-        //        OAuthCallback authzCallback = new OAuthCallback(
-        //                tokReqMsgCtx.getAuthorizedUser(),
-        //                tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId(),
-        //                OAuthCallback.OAuthCallbackType.ACCESS_DELEGATION_TOKEN);
-        //        authzCallback.setRequestedScope(tokReqMsgCtx.getScope());
-        //        authzCallback.setCarbonGrantType(org.wso2.carbon.identity.oauth.common.GrantType.valueOf(tokReqMsgCtx.
-        //                                                            getOauth2AccessTokenReqDTO().getGrantType()));
-        //        callbackManager.handleCallback(authzCallback);
-        //        tokReqMsgCtx.setValidityPeriod(authzCallback.getValidityPeriod());
-        //        return authzCallback.isAuthorized();
-
-    }
-
     @Override
     public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) {
         // APIM specific scope handling
