@@ -138,16 +138,22 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                 kerberosFederatedConfig = IdentityApplicationManagementUtil
                         .getFederatedAuthenticator(identityProvider.getFederatedAuthenticatorConfigs(),
                                 KerberosGrantConstants.KERBEROS_IDP_IDENTIFIER);
-                for (Property property : kerberosFederatedConfig.getProperties()) {
-                    if (KerberosGrantConstants.KERBEROS_IDP_SPNNAME.equals(property.getName()))
-                        kerberosSPN = property.getValue();
-                    else if (KerberosGrantConstants.KERBEROS_IDP_SPNPASSWORD.equals(property.getName()))
-                        kerberosPwd = property.getValue();
+                if (kerberosFederatedConfig != null) {
+                    for (Property property : kerberosFederatedConfig.getProperties()) {
+                        if (KerberosGrantConstants.KERBEROS_IDP_SPNNAME.equals(property.getName()))
+                            kerberosSPN = property.getValue();
+                        else if (KerberosGrantConstants.KERBEROS_IDP_SPNPASSWORD.equals(property.getName()))
+                            kerberosPwd = property.getValue();
+                    }
+
+                    if (StringUtils.isEmpty(kerberosSPN) || StringUtils.isEmpty(kerberosPwd)) {
+                        handleException("Kerberos username/password is not provided for the IDP : " + kerberosRealm);
+                    }
+                } else {
+                    handleException("Kerberos IDP configuration could not be located : " + kerberosRealm);
                 }
 
-                if (StringUtils.isEmpty(kerberosSPN) || StringUtils.isEmpty(kerberosPwd)) {
-                    handleException("Kerberos username/password is not provided for the IDP : " + kerberosRealm);
-                }
+
             } else {
                 handleException("No Registered IDP found for Kerberos with realm : " + kerberosRealm);
             }
