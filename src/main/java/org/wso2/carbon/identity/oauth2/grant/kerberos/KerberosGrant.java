@@ -26,7 +26,7 @@ import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSManager;
 import org.ietf.jgss.Oid;
-import org.wso2.carbon.apimgt.keymgt.ScopesIssuer;
+import org.wso2.carbon.apimgt.keymgt.issuers.ScopesIssuingHandler;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
@@ -311,7 +311,7 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
     @Override
     public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) {
         // APIM specific scope handling
-        return ScopesIssuer.getInstance().setScopes(tokReqMsgCtx);
+        return ScopesIssuingHandler.getInstance().setScopes(tokReqMsgCtx);
     }
 
     private void handleException(String errorMessage) throws IdentityOAuth2Exception {
