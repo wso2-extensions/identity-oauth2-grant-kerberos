@@ -17,7 +17,7 @@
  */
 package org.wso2.carbon.identity.oauth2.grant.kerberos;
 
-import org.wso2.carbon.apimgt.keymgt.issuers.ScopesIssuingHandler;
+import org.wso2.carbon.apimgt.keymgt.ScopesIssuer;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 
 /**
@@ -30,7 +30,7 @@ public class ExtendedKerberosGrant extends KerberosGrant {
     @Override
     public boolean validateScope(OAuthTokenReqMessageContext tokReqMsgCtx) {
         // APIM specific scope handling
-        return ScopesIssuingHandler.getInstance().setScopes(tokReqMsgCtx);
+        return ScopesIssuer.getInstance().setScopes(tokReqMsgCtx);
     }
 
 }
