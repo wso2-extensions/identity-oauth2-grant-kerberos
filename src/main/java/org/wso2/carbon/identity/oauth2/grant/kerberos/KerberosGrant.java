@@ -31,6 +31,8 @@ import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorC
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.Property;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
+import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
+import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.ResponseHeader;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
@@ -38,6 +40,9 @@ import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
 import org.wso2.carbon.idp.mgt.IdentityProviderManagementException;
 import org.wso2.carbon.idp.mgt.IdentityProviderManager;
+import org.wso2.carbon.user.core.UserStoreException;
+import org.wso2.carbon.user.core.UserStoreManager;
+import org.wso2.carbon.user.core.service.RealmService;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 import sun.security.jgss.GSSHeader;
 import sun.security.jgss.GSSUtil;
@@ -106,6 +111,7 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         // Kerberos Credentials
         String kerberosSPN = null;
         String kerberosPwd = null;
+        String userstoreDomains = null;
         FederatedAuthenticatorConfig kerberosFederatedConfig = null;
 
         /* Setting the tenant ID */
@@ -121,11 +127,20 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
             if (KerberosGrantConstants.KERBEROS_GRANT_TOKEN.equals(parameter.getKey())) {
                 if (parameter.getValue() != null && parameter.getValue().length > 0) {
                     kerberosServiceToken = parameter.getValue()[0];
+
+                    if (StringUtils.isEmpty(kerberosServiceToken)) {
+                        handleException("Kerberos service token cannot be empty.");
+                    }
+
                 }
             }
             if (KerberosGrantConstants.KERBEROS_REALM.equals(parameter.getKey())) {
                 if (parameter.getValue() != null && parameter.getValue().length > 0) {
                     kerberosRealm = parameter.getValue()[0];
+
+                    if (StringUtils.isEmpty(kerberosRealm)) {
+                        handleException("Kerberos realm cannot be empty.");
+                    }
                 }
             }
         }
@@ -142,6 +157,8 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                             kerberosSPN = property.getValue();
                         else if (KerberosGrantConstants.KERBEROS_IDP_SPNPASSWORD.equals(property.getName()))
                             kerberosPwd = property.getValue();
+                        else if (KerberosGrantConstants.USER_STORE_DOMAINS.equals(property.getName()))
+                            userstoreDomains = property.getValue();
                     }
 
                     if (StringUtils.isEmpty(kerberosSPN) || StringUtils.isEmpty(kerberosPwd)) {
@@ -189,7 +206,20 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                         kerberosUsersId.lastIndexOf('@') :
                         kerberosUsersId.length();
                 AuthenticatedUser kerberosUser = new AuthenticatedUser();
-                kerberosUser.setUserName(kerberosUsersId.substring(0, indexOfAt));
+                String username = kerberosUsersId.substring(0, indexOfAt);
+                kerberosUser.setUserName(username);
+
+                if (StringUtils.isNotEmpty(userstoreDomains)) {
+                    String[] userStores = userstoreDomains.split(",");
+
+                    for (String userStoreDomain : userStores) {
+                        if (isUserExistsInUserStore(kerberosUser.getUserName(), tenantDomain, userStoreDomain)) {
+                            kerberosUser.setUserStoreDomain(userStoreDomain);
+                            break;
+                        }
+                    }
+                }
+
                 kerberosUser
                         .setTenantDomain(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getTenantDomain());
                 oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
@@ -309,5 +339,41 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
     private void handleException(String errorMessage) throws IdentityOAuth2Exception {
         log.error(errorMessage);
         throw new IdentityOAuth2Exception(errorMessage);
+    }
+
+    private void handleException(String errorMessage, Exception e) throws IdentityOAuth2Exception {
+        log.error(errorMessage, e);
+        throw new IdentityOAuth2Exception(errorMessage, e);
+    }
+
+    /**
+     * Check whether the user exists in any user store that belongs to the realm the user belongs to.
+     *
+     * @param username Username.
+     * @param tenantDomain Tenant domain.
+     * @param userStoreDomain USer store domain.
+     * @return 'true' if the user exist in the user store.
+     */
+    private boolean isUserExistsInUserStore(String username, String tenantDomain, String userStoreDomain)
+            throws IdentityOAuth2Exception {
+        UserStoreManager userStoreManager;
+        try {
+            String userNameWithUserStoreDomain = IdentityUtil.addDomainToName(username, userStoreDomain);
+
+            RealmService realmService = IdentityTenantUtil.getRealmService();
+            int tenantId = realmService.getTenantManager().getTenantId(tenantDomain);
+            userStoreManager = (UserStoreManager) realmService.getTenantUserRealm(tenantId).getUserStoreManager();
+            // check whether the user exists in the given user store domain
+            return userStoreManager.isExistingUser(userNameWithUserStoreDomain);
+
+        } catch (UserStoreException e) {
+            String errorMsg = "Error when searching for user: %s in '%s' userStoreDomain in '%s' tenant.";
+            handleException(String.format(errorMsg, username, userStoreDomain, tenantDomain), e);
+        } catch (org.wso2.carbon.user.api.UserStoreException e) {
+            String errorMsg = "Error while retrieving userStoreManger for tenant: %s.";
+            handleException(String.format(errorMsg, tenantDomain), e);
+        }
+
+        return false;
     }
 }

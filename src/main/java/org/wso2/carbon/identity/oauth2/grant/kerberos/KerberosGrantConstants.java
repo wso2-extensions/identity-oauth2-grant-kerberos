@@ -33,4 +33,6 @@ public class KerberosGrantConstants {
 
     public static final String KERBEROS_IDP_SPNPASSWORD = "SPNPassword";
 
+    public static final String USER_STORE_DOMAINS = "UserStoreDomains";
+
 }
