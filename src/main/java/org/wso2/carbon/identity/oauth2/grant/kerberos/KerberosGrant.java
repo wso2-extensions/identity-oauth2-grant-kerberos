@@ -69,7 +69,7 @@ import javax.security.auth.login.LoginException;
  */
 public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
-    private static Log log = LogFactory.getLog(KerberosGrant.class);
+    private static final Log log = LogFactory.getLog(KerberosGrant.class);
     private static GSSManager gssManager = GSSManager.getInstance();
 
     /**
