@@ -216,8 +216,15 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
                         if (isUserExistsInUserStore(kerberosUser.getUserName(), tenantDomain, userStoreDomain)) {
                             kerberosUser.setUserStoreDomain(userStoreDomain);
                             break;
+                        } else {
+                            if (log.isDebugEnabled()) {
+                                log.debug("User: " + kerberosUser.getUserName() + " does not exist in given user " +
+                                          "store domains: " + userstoreDomains);
+                            }
                         }
                     }
+                } else {
+                    kerberosUser.setFederatedUser(true);
                 }
 
                 kerberosUser
