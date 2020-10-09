@@ -27,14 +27,19 @@ import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSManager;
 import org.ietf.jgss.Oid;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
 import org.wso2.carbon.identity.application.common.model.FederatedAuthenticatorConfig;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.model.Property;
+import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
 import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.oauth.common.OAuthConstants;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.ResponseHeader;
+import org.wso2.carbon.identity.oauth2.dto.OAuth2AccessTokenReqDTO;
+import org.wso2.carbon.identity.oauth2.internal.OAuth2ServiceComponentHolder;
 import org.wso2.carbon.identity.oauth2.model.RequestParameter;
 import org.wso2.carbon.identity.oauth2.token.OAuthTokenReqMessageContext;
 import org.wso2.carbon.identity.oauth2.token.handlers.grant.AbstractAuthorizationGrantHandler;
@@ -229,6 +234,8 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
 
                 kerberosUser
                         .setTenantDomain(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getTenantDomain());
+                ServiceProvider serviceProvider = getServiceProvider(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO());
+                kerberosUser.setAuthenticatedSubjectIdentifier(kerberosUser.getUserName(), serviceProvider);
                 oAuthTokenReqMessageContext.setAuthorizedUser(kerberosUser);
                 oAuthTokenReqMessageContext
                         .setScope(oAuthTokenReqMessageContext.getOauth2AccessTokenReqDTO().getScope());
@@ -382,5 +389,30 @@ public class KerberosGrant extends AbstractAuthorizationGrantHandler {
         }
 
         return false;
+    }
+
+    private ServiceProvider getServiceProvider(OAuth2AccessTokenReqDTO tokenReq) throws IdentityOAuth2Exception {
+        ServiceProvider serviceProvider;
+        try {
+            serviceProvider = OAuth2ServiceComponentHolder.getApplicationMgtService().getServiceProviderByClientId(
+                    tokenReq.getClientId(), OAuthConstants.Scope.OAUTH2, tokenReq.getTenantDomain());
+        } catch (IdentityApplicationManagementException e) {
+            throw new IdentityOAuth2Exception("Error occurred while retrieving OAuth2 application data for client id " +
+                    tokenReq.getClientId(), e);
+        }
+        if (serviceProvider == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("Could not find an application for client id: " + tokenReq.getClientId()
+                        + ", scope: " + OAuthConstants.Scope.OAUTH2 + ", tenant: " + tokenReq.getTenantDomain());
+            }
+            throw new IdentityOAuth2Exception("Service Provider not found");
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("Retrieved service provider: " + serviceProvider.getApplicationName() + " for client: " +
+                    tokenReq.getClientId() + ", scope: " + OAuthConstants.Scope.OAUTH2 + ", tenant: " +
+                    tokenReq.getTenantDomain());
+        }
+
+        return serviceProvider;
     }
 }
